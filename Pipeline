@@ -1,0 +1,49 @@
+pipeline {
+    environment {
+      registry = "kmi8652/prod_image"
+      registryCredential = '1efdf3ff-0239-4d80-9b70-3035bf15b74a'
+      dockerImage = ''
+    }
+    agent {
+        docker {
+            image 'kmi8652/build_image:latest'
+            args '-v /var/run/docker.sock:/var/run/docker.sock -u root:root'
+        }
+    }
+
+    stages {
+        stage('Git clone') {
+            steps {
+                sh  'rm -rf lession_11 boxfuse-sample-java-war-hello'
+                sh  'git clone https://github.com/korzun-m/lession_11'
+                sh  'git clone https://github.com/boxfuse/boxfuse-sample-java-war-hello.git'
+            }
+        }
+
+        stage('Build war') {
+            steps {
+                sh 'cd boxfuse-sample-java-war-hello && mvn package'
+                sh 'cp boxfuse-sample-java-war-hello/target/*.war .'
+            }
+        }
+
+        stage('Make docker image') {
+            steps {
+                script {
+                    sh 'cp lession_11/prod_image/Dockerfile .'
+                    dockerImage = docker.build registry
+                    docker.withRegistry( '', registryCredential ) {
+                    dockerImage.push()
+                    }
+                }
+            }
+        }
+        stage('Run docker on prod') {
+            steps {
+                sshagent(credentials : ['f2bddff1-c9c2-47a1-b60f-39924c00c8a3']) {
+                    sh 'ssh root@34.136.229.67 "docker rm -f prod_image && docker run -d -p 80:8080 --name prod_image kmi8652/prod_image"'
+                }
+            }
+        }
+    }
+}
